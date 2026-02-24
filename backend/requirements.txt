@@ -1,0 +1,18 @@
+# Google Generative AI & SDKs
+google-generativeai>=0.8.0
+google-cloud-aiplatform>=1.70.0
+
+# Google Cloud Services SDK
+google-cloud-monitoring>=2.14.0
+google-cloud-logging>=3.11.0
+google-cloud-firestore>=2.14.0
+
+# Backend Framework & Networking
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-dotenv>=1.0.1
+pydantic>=2.6.0
+
+# Audio Processing (Required for Live API handling)
+PyAudio>=0.2.14
+numpy>=1.26.0
