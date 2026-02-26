@@ -5,6 +5,7 @@
 import 'dart:async' show Stream;
 import 'dart:typed_data';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:injectable/injectable.dart';
 
 abstract class SreRemoteDataSource {
   Stream<dynamic> get liveStream;
@@ -12,6 +13,7 @@ abstract class SreRemoteDataSource {
   void closeConnection();
 }
 
+@Singleton()
 class SreRemoteDataSourceImpl implements SreRemoteDataSource {
   final String serverUrl;
   WebSocketChannel? _channel;
