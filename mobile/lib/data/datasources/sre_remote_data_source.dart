@@ -13,7 +13,7 @@ abstract class SreRemoteDataSource {
   void closeConnection();
 }
 
-@Singleton()
+@LazySingleton(as: SreRemoteDataSource)
 class SreRemoteDataSourceImpl implements SreRemoteDataSource {
   final String serverUrl;
   WebSocketChannel? _channel;
