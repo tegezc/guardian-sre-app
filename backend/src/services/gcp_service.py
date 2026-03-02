@@ -8,6 +8,7 @@ import datetime
 from google.cloud import monitoring_v3
 from google.cloud import logging_v2
 from typing import List, Dict, Any
+from google.auth import default
 
 class GCPService:
     def __init__(self, project_id: str):
@@ -21,6 +22,16 @@ class GCPService:
         # Initialize clients for Monitoring and Logging
         self.metrics_client = monitoring_v3.MetricServiceClient()
         self.logging_client = logging_v2.Client(project=project_id)
+        # self.project_id = project_id
+        # try:
+        #     # Mengambil kredensial secara eksplisit dari file lokal (ADC)
+        #     credentials, _ = default()
+        #     self.metrics_client = monitoring_v3.MetricServiceClient(credentials=credentials)
+        #     print(f"GCP Service initialized for project: {project_id}")
+        # except Exception as e:
+        #     print(f"Failed to initialize GCP credentials: {e}")
+        #     # Fallback agar tidak crash saat inisialisasi
+        #     self.metrics_client = None
 
     def get_service_latency(self, service_name: str, minutes: int = 15) -> Dict[str, Any]:
         """
