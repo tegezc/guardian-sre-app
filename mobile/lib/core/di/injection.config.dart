@@ -11,6 +11,7 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'package:get_it/get_it.dart' as _i174;
 import 'package:injectable/injectable.dart' as _i526;
+import 'package:mobile/core/di/register_module.dart' as _i815;
 import 'package:mobile/data/datasources/sre_remote_data_source.dart' as _i512;
 import 'package:mobile/data/repositories/sre_repository_impl.dart' as _i269;
 import 'package:mobile/domain/repositories/sre_repository.dart' as _i949;
@@ -24,8 +25,10 @@ extension GetItInjectableX on _i174.GetIt {
     _i526.EnvironmentFilter? environmentFilter,
   }) {
     final gh = _i526.GetItHelper(this, environment, environmentFilter);
+    final registerModule = _$RegisterModule();
+    gh.factory<String>(() => registerModule.baseUrl, instanceName: 'baseUrl');
     gh.lazySingleton<_i512.SreRemoteDataSource>(
-      () => _i512.SreRemoteDataSourceImpl(serverUrl: gh<String>()),
+      () => _i512.SreRemoteDataSourceImpl(gh<String>(instanceName: 'baseUrl')),
     );
     gh.singleton<_i949.SreRepository>(
       () => _i269.SreRepositoryImpl(gh<_i512.SreRemoteDataSource>()),
@@ -42,3 +45,5 @@ extension GetItInjectableX on _i174.GetIt {
     return this;
   }
 }
+
+class _$RegisterModule extends _i815.RegisterModule {}

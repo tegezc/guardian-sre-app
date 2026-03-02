@@ -18,7 +18,7 @@ class SreRemoteDataSourceImpl implements SreRemoteDataSource {
   final String serverUrl;
   WebSocketChannel? _channel;
 
-  SreRemoteDataSourceImpl({required this.serverUrl});
+  SreRemoteDataSourceImpl(@Named("baseUrl") this.serverUrl);
 
   @override
   Stream<dynamic> get liveStream {

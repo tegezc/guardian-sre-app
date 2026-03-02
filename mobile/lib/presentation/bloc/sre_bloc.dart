@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:injectable/injectable.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../domain/entities/sre_message.dart';
 import '../../../domain/usecases/get_sre_stream_use_case.dart';
 import '../../../domain/repositories/sre_repository.dart';
@@ -26,6 +27,8 @@ class SreBloc extends Bloc<SreEvent, SreState> {
     emit(state.copyWith(status: SreStatus.connecting));
     
     try {
+
+      _requestMicrophonePermission();
       // Cancel previous subscription if exists
       await _sreSubscription?.cancel();
       
@@ -58,6 +61,13 @@ class SreBloc extends Bloc<SreEvent, SreState> {
     await _sreSubscription?.cancel();
     _repository.stopSession();
     emit(state.copyWith(status: SreStatus.disconnected));
+  }
+
+  Future<void> _requestMicrophonePermission() async {
+    var status = await Permission.microphone.status;
+    if (status.isDenied || status.isPermanentlyDenied) {
+      await Permission.microphone.request();
+    }
   }
 
   @override
