@@ -29,15 +29,15 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await websocket.accept()
     print("Client connected to SRE Voice Stream")
-    
+
+    # Instantiate the agent
     agent = GeminiLiveAgent()
-    
+
     try:
-        # We start the Gemini session and bridge it with the client WebSocket
-        # In a full implementation, we would pass the websocket instance
-        # to the agent to forward audio bytes and UI metadata.
-        await agent.run_session()
-        
+        # Pass the websocket object so the agent can read audio bytes
+        # and send audio/text back to Flutter.
+        await agent.run_session(websocket)
+
     except WebSocketDisconnect:
         print("Client disconnected from SRE Voice Stream")
     except Exception as e:
