@@ -19,7 +19,7 @@ class GeminiLiveAgent:
             location="us-central1"
         )
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-        self.gcp_service = GCPService(self.project_id)
+        self.gcp_service = GCPService(self.project_id) 
         self.model_id = "gemini-live-2.5-flash-native-audio"
 
     async def run_session(self, websocket: WebSocket):
@@ -109,6 +109,7 @@ class GeminiLiveAgent:
                     # Print the text transcript to our FastAPI terminal
                     if part.text:
                         print(f"🤖 Guardian: {part.text}")
+                        await websocket.send_text(part.text)
 
                     # Forward the raw audio bytes back to the Flutter UI
                     if part.inline_data:
