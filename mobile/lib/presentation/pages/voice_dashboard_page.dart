@@ -74,27 +74,29 @@ class VoiceDashboardView extends StatelessWidget {
     } else if (state is VoiceProcessing) {
       // Safely access the statusMessage from the VoiceProcessing state
       text = state.statusMessage;
-      color = Colors.orangeAccent;
+      color = Colors.greenAccent;
     } else if (state is VoiceError) {
       text = "Connection lost or error occurred.";
       color = Colors.redAccent;
     }
 
-    return Text(
-      text,
-      style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w500),
-      textAlign: TextAlign.center,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+      child: Text(
+        text,
+        style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w500),
+        textAlign: TextAlign.center,
+      ),
     );
   }
 
   /// Builds the interactive microphone button that dispatches toggle events.
   Widget _buildMicButton(BuildContext context, VoiceState state) {
-    final isRecording = state is VoiceRecording;
-    final isProcessing = state is VoiceProcessing;
+    // FIX: Consider the session active during BOTH recording and processing
+    final isActive = state is VoiceRecording || state is VoiceProcessing;
 
     return GestureDetector(
       onTap: () {
-        // Dispatch the toggle event to the BLoC to handle start/stop logic
         context.read<VoiceBloc>().add(ToggleVoiceRecording());
       },
       child: AnimatedContainer(
@@ -102,12 +104,13 @@ class VoiceDashboardView extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: isRecording ? Colors.green.withOpacity(0.2) : Colors.blueGrey[800],
+          // Stay green as long as the session is active
+          color: isActive ? Colors.green.withOpacity(0.2) : Colors.blueGrey[800],
           border: Border.all(
-            color: isRecording ? Colors.greenAccent : Colors.blueGrey,
-            width: isRecording ? 3 : 1,
+            color: isActive ? Colors.greenAccent : Colors.blueGrey,
+            width: isActive ? 3 : 1,
           ),
-          boxShadow: isRecording
+          boxShadow: isActive
               ? [
             BoxShadow(
               color: Colors.greenAccent.withOpacity(0.5),
@@ -118,11 +121,9 @@ class VoiceDashboardView extends StatelessWidget {
               : [],
         ),
         child: Icon(
-          isRecording ? Icons.stop_rounded : Icons.mic_rounded,
+          isActive ? Icons.stop_rounded : Icons.mic_rounded,
           size: 64,
-          color: isRecording
-              ? Colors.greenAccent
-              : (isProcessing ? Colors.grey : Colors.white),
+          color: isActive ? Colors.greenAccent : Colors.white,
         ),
       ),
     );

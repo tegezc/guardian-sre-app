@@ -37,7 +37,7 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
 
   Future<void> _onToggleVoiceRecording(ToggleVoiceRecording event, Emitter<VoiceState> emit) async {
     // Gracefully stop if already recording
-    if (state is VoiceRecording) {
+    if (state is VoiceRecording || state is VoiceProcessing) {
       await _stopAndCleanup();
       emit(VoiceIdle());
       return;
@@ -107,7 +107,14 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
   void _onServerResponseReceived(_ServerResponseReceived event, Emitter<VoiceState> emit) {
     // Handle incoming data/metrics from the Python SRE backend
     print("Guardian Backend Response: ${event.response}");
-    emit(const VoiceProcessing("Analyzing infrastructure metrics..."));
+    if (event.response is String) {
+      // It's text from Gemini! Let's display it on the UI.
+      emit(VoiceProcessing(event.response));
+    } else {
+      // It's binary audio data.
+      // Keep the current status message but indicate audio is flowing.
+      emit(const VoiceProcessing("Guardian is speaking..."));
+    }
   }
 
   Future<void> _stopAndCleanup() async {
