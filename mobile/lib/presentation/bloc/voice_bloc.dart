@@ -5,6 +5,7 @@ import 'package:equatable/equatable.dart';
 import 'package:injectable/injectable.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
+import 'package:audioplayers/audioplayers.dart'; // NEW IMPORT
 
 import '../../domain/usecases/connect_voice_stream.dart';
 import '../../domain/usecases/send_audio_chunk.dart';
@@ -21,9 +22,17 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
 
   final AudioRecorder _audioRecorder = AudioRecorder();
 
+  // NEW: Using the highly stable AudioPlayers package
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
   StreamSubscription<Uint8List>? _micSubscription;
   StreamSubscription<dynamic>? _serverSubscription;
 
+  // NEW: Buffer to accumulate raw PCM bytes from Gemini
+  final List<int> _pcmBuffer = [];
+
+  // NEW: Timer to detect when Gemini finishes a sentence
+  Timer? _playbackTimer;
 
   VoiceBloc(
       this._connectVoiceStream,
@@ -36,7 +45,6 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
   }
 
   Future<void> _onToggleVoiceRecording(ToggleVoiceRecording event, Emitter<VoiceState> emit) async {
-    // Gracefully stop if already recording
     if (state is VoiceRecording || state is VoiceProcessing) {
       await _stopAndCleanup();
       emit(VoiceIdle());
@@ -44,7 +52,6 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
     }
 
     try {
-      // 1. Enforce Runtime Permissions (Crucial for physical Android devices)
       var status = await Permission.microphone.status;
       if (!status.isGranted) {
         status = await Permission.microphone.request();
@@ -54,7 +61,6 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
         }
       }
 
-      // 2. Establish WebSocket connection via UseCase and listen to server responses
       final serverStream = _connectVoiceStream.execute();
 
       _serverSubscription = serverStream.listen(
@@ -62,68 +68,112 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
         onError: (error) => emit(VoiceError("Stream error: $error")),
       );
 
-      // 3. Configure audio parameters strictly matching Gemini Live API requirements
       const config = RecordConfig(
-        encoder: AudioEncoder.pcm16bits, // Requires Linear PCM 16-bit
-        sampleRate: 16000,               // Requires 16kHz
-        numChannels: 1,                  // Requires Mono
+        encoder: AudioEncoder.pcm16bits,
+        sampleRate: 16000,
+        numChannels: 1,
       );
 
-      // 4. Start recording hardware stream
       final micStream = await _audioRecorder.startStream(config);
 
-      print("DEBUG: Microphone stream started successfully.");
-
-      // 5. Pipe microphone bytes to the internal BLoC event
-      _micSubscription = micStream.listen(
-            (data) {
-          // Log to check if bytes are actually flowing
-          print("DEBUG: Captured audio chunk: ${data.length} bytes");
-          add(_AudioChunkCaptured(data));
-        },
-        onError: (error) {
-          // Catch any hardware or platform-channel errors
-          print("DEBUG ERROR: Microphone stream error: $error");
-          emit(VoiceError("Mic error: $error"));
-        },
-        onDone: () {
-          print("DEBUG WARNING: Microphone stream closed unexpectedly.");
-        },
-      );
+      _micSubscription = micStream.listen((data) {
+        add(_AudioChunkCaptured(data));
+      });
 
       emit(VoiceRecording());
     } catch (e) {
-      print("DEBUG FATAL: $e");
       emit(VoiceError("Failed to start voice agent: ${e.toString()}"));
       await _stopAndCleanup();
     }
   }
 
   void _onAudioChunkCaptured(_AudioChunkCaptured event, Emitter<VoiceState> emit) {
-    // Delegate raw byte transmission to the UseCase
     _sendAudioChunk.execute(event.audioChunk);
   }
 
   void _onServerResponseReceived(_ServerResponseReceived event, Emitter<VoiceState> emit) {
-    // Handle incoming data/metrics from the Python SRE backend
-    print("Guardian Backend Response: ${event.response}");
     if (event.response is String) {
-      // It's text from Gemini! Let's display it on the UI.
       emit(VoiceProcessing(event.response));
-    } else {
-      // It's binary audio data.
-      // Keep the current status message but indicate audio is flowing.
+    } else if (event.response is List<int>) {
+      // 1. Accumulate incoming PCM bytes into the buffer
+      _pcmBuffer.addAll(event.response as List<int>);
+
       emit(const VoiceProcessing("Guardian is speaking..."));
+
+      // 2. Reset the timer. If 300ms pass without new bytes, play the audio!
+      _playbackTimer?.cancel();
+      _playbackTimer = Timer(const Duration(milliseconds: 300), () {
+        _playAccumulatedAudio();
+      });
     }
   }
 
+  /// Wraps the accumulated PCM data with a WAV header and plays it safely.
+  Future<void> _playAccumulatedAudio() async {
+    if (_pcmBuffer.isEmpty) return;
+
+    try {
+      // Inject WAV header into the raw PCM data
+      final Uint8List wavBytes = _addWavHeader(Uint8List.fromList(_pcmBuffer));
+
+      // Clear the buffer for the next sentence
+      _pcmBuffer.clear();
+
+      // Play safely from memory (BytesSource)
+      await _audioPlayer.play(BytesSource(wavBytes));
+    } catch (e) {
+      print("Audio playback error: $e");
+    }
+  }
+
+  /// Generates a standard 44-byte WAV header for 16kHz, 16-bit Mono audio.
+  Uint8List _addWavHeader(Uint8List pcmBytes) {
+    const int channels = 1;
+    const int sampleRate = 16000;
+    const int bitsPerSample = 16;
+    const int byteRate = sampleRate * channels * (bitsPerSample ~/ 8);
+    const int blockAlign = channels * (bitsPerSample ~/ 8);
+    final int dataSize = pcmBytes.length;
+    final int fileSize = 36 + dataSize;
+
+    final ByteData header = ByteData(44);
+
+    // "RIFF" chunk descriptor
+    header.setUint8(0, 82); header.setUint8(1, 73); header.setUint8(2, 70); header.setUint8(3, 70);
+    header.setUint32(4, fileSize, Endian.little);
+    // "WAVE" format
+    header.setUint8(8, 87); header.setUint8(9, 65); header.setUint8(10, 86); header.setUint8(11, 69);
+    // "fmt " sub-chunk
+    header.setUint8(12, 102); header.setUint8(13, 109); header.setUint8(14, 116); header.setUint8(15, 32);
+    header.setUint32(16, 16, Endian.little); // Subchunk1Size (16 for PCM)
+    header.setUint16(20, 1, Endian.little);  // AudioFormat (1 = PCM)
+    header.setUint16(22, channels, Endian.little);
+    header.setUint32(24, sampleRate, Endian.little);
+    header.setUint32(28, byteRate, Endian.little);
+    header.setUint16(32, blockAlign, Endian.little);
+    header.setUint16(34, bitsPerSample, Endian.little);
+    // "data" sub-chunk
+    header.setUint8(36, 100); header.setUint8(37, 97); header.setUint8(38, 116); header.setUint8(39, 97);
+    header.setUint32(40, dataSize, Endian.little);
+
+    final BytesBuilder builder = BytesBuilder();
+    builder.add(header.buffer.asUint8List());
+    builder.add(pcmBytes);
+
+    return builder.toBytes();
+  }
+
   Future<void> _stopAndCleanup() async {
+    _playbackTimer?.cancel();
     await _micSubscription?.cancel();
     await _serverSubscription?.cancel();
 
     if (await _audioRecorder.isRecording()) {
       await _audioRecorder.stop();
     }
+
+    await _audioPlayer.stop();
+    _pcmBuffer.clear();
 
     _disconnectVoiceStream.execute();
   }
@@ -132,7 +182,7 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
   Future<void> close() {
     _stopAndCleanup();
     _audioRecorder.dispose();
+    _audioPlayer.dispose();
     return super.close();
   }
 }
-
