@@ -1,102 +1,72 @@
-"""
-GCP Service Layer
-This module handles all direct interactions with Google Cloud Monitoring and Logging APIs.
-It follows the Singleton pattern to ensure efficient connection pooling.
-"""
-
-import datetime
-from google.cloud import monitoring_v3
-from google.cloud import logging_v2
-from typing import List, Dict, Any
-from google.auth import default
+import random
+from datetime import datetime, timezone
 
 class GCPService:
+    """
+    Simulates Google Cloud Platform infrastructure interactions.
+    For a production environment, replace these mock returns with 
+    actual calls to google-cloud-monitoring or google-cloud-logging SDKs.
+    """
+
     def __init__(self, project_id: str):
-        """
-        Initializes the GCP clients.
-        :param project_id: The Google Cloud Project ID.
-        """
         self.project_id = project_id
-        self.project_name = f"projects/{project_id}"
-        
-        # Initialize clients for Monitoring and Logging
-        self.metrics_client = monitoring_v3.MetricServiceClient()
-        self.logging_client = logging_v2.Client(project=project_id)
-        # self.project_id = project_id
-        # try:
-        #     # Mengambil kredensial secara eksplisit dari file lokal (ADC)
-        #     credentials, _ = default()
-        #     self.metrics_client = monitoring_v3.MetricServiceClient(credentials=credentials)
-        #     print(f"GCP Service initialized for project: {project_id}")
-        # except Exception as e:
-        #     print(f"Failed to initialize GCP credentials: {e}")
-        #     # Fallback agar tidak crash saat inisialisasi
-        #     self.metrics_client = None
 
-    def get_service_latency(self, service_name: str, minutes: int = 15) -> Dict[str, Any]:
+    def check_service_health(self, service_name: str, environment: str) -> dict:
         """
-        Fetches the p95 latency for a specific Cloud Run service.
-        :param service_name: Name of the Cloud Run service.
-        :param minutes: Lookback window in minutes.
-        :return: A dictionary containing the average latency value.
+        Simulates checking the health of a specific GCP service.
         """
-        now = datetime.datetime.now(datetime.timezone.utc)
-        start_time = now - datetime.timedelta(minutes=minutes)
+        print(f"[GCP Mock] Checking health for {service_name} in {environment}...")
 
-        interval = monitoring_v3.TimeInterval(
-            {
-                "end_time": {"seconds": int(now.timestamp())},
-                "start_time": {"seconds": int(start_time.timestamp())},
-            }
-        )
+        # Simulate a realistic scenario: 'payment-api' is currently struggling
+        if service_name.lower() == "payment-api":
+            status = "DEGRADED"
+            uptime = "98.5%"
+            active_alerts = 2
+        else:
+            status = "HEALTHY"
+            uptime = "99.99%"
+            active_alerts = 0
 
-        # Filter for Cloud Run Request Latencies
-        # Note: In a real scenario, ensure the filter matches your resource names
-        filter_query = (
-            f'resource.type = "cloud_run_revision" '
-            f'AND resource.labels.service_name = "{service_name}" '
-            f'AND metric.type = "run.googleapis.com/request_latencies"'
-        )
-
-        results = self.metrics_client.list_time_series(
-            request={
-                "name": self.project_name,
-                "filter": filter_query,
-                "interval": interval,
-                "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
-            }
-        )
-
-        # Process the points (simplified for the agent)
-        total_latency = 0
-        point_count = 0
-        for result in results:
-            for point in result.points:
-                # Value is usually a distribution for latencies
-                total_latency += point.value.distribution_value.mean
-                point_count += 1
-
-        avg_latency = (total_latency / point_count) if point_count > 0 else 0
         return {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "service": service_name,
-            "metric": "p95_latency",
-            "value": f"{avg_latency:.2f}ms",
-            "status": "normal" if avg_latency < 1000 else "degraded"
+            "environment": environment,
+            "status": status,
+            "uptime_30d": uptime,
+            "active_alerts": active_alerts,
+            "message": f"Service is currently {status}."
         }
 
-    def fetch_recent_errors(self, service_name: str, limit: int = 5) -> List[str]:
+    def get_infrastructure_metrics(self, service_name: str, metric_type: str, time_window_minutes: int = 15) -> dict:
         """
-        Retrieves the most recent ERROR logs for a specific service.
-        :param service_name: Name of the Cloud Run service.
-        :param limit: Number of log entries to retrieve.
-        :return: List of error message strings.
+        Simulates retrieving specific performance metrics for a service.
         """
-        log_filter = (
-            f'resource.type="cloud_run_revision" '
-            f'AND resource.labels.service_name="{service_name}" '
-            f'severity>=ERROR'
-        )
+        print(f"[GCP Mock] Fetching {metric_type} for {service_name} over last {time_window_minutes} mins...")
 
-        entries = self.logging_client.list_entries(filter_=log_filter, order_by=logging_v2.DESCENDING, max_results=limit)
-        
-        return [f"[{entry.timestamp}] {entry.payload}" for entry in entries]
+        metric_value = "Unknown"
+        unit = ""
+
+        # Generate realistic mock data based on the requested metric
+        if metric_type == "latency":
+            # High latency if it's payment-api, normal otherwise
+            base_latency = 850 if service_name.lower() == "payment-api" else 45
+            variance = random.randint(-10, 50)
+            metric_value = f"{base_latency + variance}"
+            unit = "ms"
+        elif metric_type == "cpu_usage":
+            metric_value = f"{random.randint(40, 95)}"
+            unit = "%"
+        elif metric_type == "error_rate":
+            metric_value = "5.2" if service_name.lower() == "payment-api" else "0.01"
+            unit = "%"
+        elif metric_type == "memory_usage":
+            metric_value = f"{random.randint(60, 85)}"
+            unit = "%"
+
+        return {
+            "service": service_name,
+            "metric": metric_type,
+            "time_window": f"{time_window_minutes} minutes",
+            "average_value": f"{metric_value}{unit}",
+            "trend": "increasing" if int(float(metric_value)) > 80 else "stable"
+        }
