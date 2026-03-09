@@ -21,3 +21,15 @@ class _ServerResponseReceived extends VoiceEvent {
   final dynamic response;
   const _ServerResponseReceived(this.response);
 }
+
+// Internal event to safely handle stream errors without breaking BLoC rules
+class _VoiceErrorOccurred extends VoiceEvent {
+  final String errorMessage;
+
+  const _VoiceErrorOccurred(this.errorMessage);
+
+  @override
+  List<Object> get props => [errorMessage];
+}
+
+class _GeminiReadySignalReceived extends VoiceEvent {}

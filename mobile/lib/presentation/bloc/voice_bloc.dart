@@ -5,7 +5,7 @@ import 'package:equatable/equatable.dart';
 import 'package:injectable/injectable.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
-import 'package:audioplayers/audioplayers.dart'; // NEW IMPORT
+import 'package:audioplayers/audioplayers.dart';
 
 import '../../domain/usecases/connect_voice_stream.dart';
 import '../../domain/usecases/send_audio_chunk.dart';
@@ -21,17 +21,12 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
   final DisconnectVoiceStreamUseCase _disconnectVoiceStream;
 
   final AudioRecorder _audioRecorder = AudioRecorder();
-
-  // NEW: Using the highly stable AudioPlayers package
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   StreamSubscription<Uint8List>? _micSubscription;
   StreamSubscription<dynamic>? _serverSubscription;
 
-  // NEW: Buffer to accumulate raw PCM bytes from Gemini
   final List<int> _pcmBuffer = [];
-
-  // NEW: Timer to detect when Gemini finishes a sentence
   Timer? _playbackTimer;
 
   VoiceBloc(
@@ -39,9 +34,43 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
       this._sendAudioChunk,
       this._disconnectVoiceStream,
       ) : super(VoiceIdle()) {
+
+    // Konfigurasi Audio OS untuk Full-Duplex (VoIP Mode)
+    _configureAudioSession();
+
     on<ToggleVoiceRecording>(_onToggleVoiceRecording);
     on<_AudioChunkCaptured>(_onAudioChunkCaptured);
     on<_ServerResponseReceived>(_onServerResponseReceived);
+    on<_GeminiReadySignalReceived>(_onGeminiReadySignalReceived);
+
+    on<_VoiceErrorOccurred>((event, emit) {
+      emit(VoiceError(event.errorMessage));
+      _stopAndCleanup();
+    });
+
+  }
+
+  // Mencegah OS membunuh mikrofon saat speaker menyala
+  Future<void> _configureAudioSession() async {
+    await _audioPlayer.setAudioContext(AudioContext(
+      android: AudioContextAndroid(
+        isSpeakerphoneOn: true,
+        stayAwake: true,
+        contentType: AndroidContentType.speech,
+        usageType: AndroidUsageType.voiceCommunication, // Mode Telepon/VoIP
+        audioFocus: AndroidAudioFocus.none, // DILARANG MERAMPAS FOKUS DARI MIC!
+      ),
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playAndRecord, // Wajib Play & Record
+        options: [
+          AVAudioSessionOptions.defaultToSpeaker,
+          AVAudioSessionOptions.mixWithOthers, // Izinkan suara mic & speaker bercampur
+          AVAudioSessionOptions.allowBluetooth,
+          AVAudioSessionOptions.allowBluetoothA2DP,
+        ],
+      ),
+    ));
+    print("⚙️ Audio Session OS berhasil dikonfigurasi untuk Full-Duplex!");
   }
 
   Future<void> _onToggleVoiceRecording(ToggleVoiceRecording event, Emitter<VoiceState> emit) async {
@@ -61,17 +90,42 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
         }
       }
 
+      // Beri tahu UI bahwa kita sedang menunggu koneksi
+      emit(const VoiceProcessing("Connecting to Guardian SRE..."));
+
       final serverStream = _connectVoiceStream.execute();
 
       _serverSubscription = serverStream.listen(
             (response) => add(_ServerResponseReceived(response)),
-        onError: (error) => emit(VoiceError("Stream error: $error")),
+        onError: (error) => add(_VoiceErrorOccurred("Stream error: $error")),
+        onDone: () => add(const _VoiceErrorOccurred("Server connection closed gracefully.")),
       );
+
+      // MIKROFON TIDAK DINYALAKAN DI SINI LAGI.
+      // Kita menunggu trigger dari _ServerResponseReceived.
+
+    } catch (e) {
+      emit(VoiceError("Failed to connect: ${e.toString()}"));
+      await _stopAndCleanup();
+    }
+  }
+
+  // NEW: Fungsi terpisah khusus untuk menyalakan mikrofon
+  Future<void> _onGeminiReadySignalReceived(_GeminiReadySignalReceived event, Emitter<VoiceState> emit) async {
+    try {
+
+      // 3. Pastikan tidak ada rekaman ganda yang berjalan
+      if (await _audioRecorder.isRecording()) {
+        return;
+      }
 
       const config = RecordConfig(
         encoder: AudioEncoder.pcm16bits,
         sampleRate: 16000,
         numChannels: 1,
+        echoCancel: true,
+        noiseSuppress: true,
+        autoGain: true,
       );
 
       final micStream = await _audioRecorder.startStream(config);
@@ -80,9 +134,11 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
         add(_AudioChunkCaptured(data));
       });
 
+      // Ubah UI menjadi mode merekam
       emit(VoiceRecording());
+      print("🎤 Mikrofon Full-Duplex menyala. Siap menerima interupsi kapan saja...");
     } catch (e) {
-      emit(VoiceError("Failed to start voice agent: ${e.toString()}"));
+      emit(VoiceError("Failed to start microphone: $e"));
       await _stopAndCleanup();
     }
   }
@@ -93,14 +149,18 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
 
   void _onServerResponseReceived(_ServerResponseReceived event, Emitter<VoiceState> emit) {
     if (event.response is String) {
-      emit(VoiceProcessing(event.response));
-    } else if (event.response is List<int>) {
-      // 1. Accumulate incoming PCM bytes into the buffer
-      _pcmBuffer.addAll(event.response as List<int>);
+      final String message = event.response as String;
+      emit(VoiceProcessing(message));
 
+      // THE MAGIC TRIGGER: Jika backend mengirim "Online!", nyalakan mikrofon
+      if (message.contains("Online!")) {
+        add(_GeminiReadySignalReceived());
+      }
+
+    } else if (event.response is List<int>) {
+      _pcmBuffer.addAll(event.response as List<int>);
       emit(const VoiceProcessing("Guardian is speaking..."));
 
-      // 2. Reset the timer. If 300ms pass without new bytes, play the audio!
       _playbackTimer?.cancel();
       _playbackTimer = Timer(const Duration(milliseconds: 300), () {
         _playAccumulatedAudio();
@@ -108,25 +168,32 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
     }
   }
 
-  /// Wraps the accumulated PCM data with a WAV header and plays it safely.
   Future<void> _playAccumulatedAudio() async {
     if (_pcmBuffer.isEmpty) return;
 
     try {
-      // Inject WAV header into the raw PCM data
-      final Uint8List wavBytes = _addWavHeader(Uint8List.fromList(_pcmBuffer));
+      // 1. MATIKAN MIC SEMENTARA: Mencegah OS membunuh mic secara diam-diam
+      // await _micSubscription?.cancel();
+      // if (await _audioRecorder.isRecording()) {
+      //   await _audioRecorder.stop();
+      // }
 
-      // Clear the buffer for the next sentence
+      final Uint8List wavBytes = _addWavHeader(Uint8List.fromList(_pcmBuffer));
       _pcmBuffer.clear();
 
-      // Play safely from memory (BytesSource)
+      // Jika AI tiba-tiba mengirim audio baru (karena interupsi), hentikan audio lama
+      if (_audioPlayer.state == PlayerState.playing) {
+        await _audioPlayer.stop();
+      }
+
+      // 2. Mainkan suara The Guardian
+      print(" Memutar suara Guardian (Interupsi diizinkan)...");
       await _audioPlayer.play(BytesSource(wavBytes));
     } catch (e) {
       print("Audio playback error: $e");
     }
   }
 
-  /// Generates a standard 44-byte WAV header for 16kHz, 16-bit Mono audio.
   Uint8List _addWavHeader(Uint8List pcmBytes) {
     const int channels = 1;
     const int sampleRate = 16000;
@@ -138,21 +205,17 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
 
     final ByteData header = ByteData(44);
 
-    // "RIFF" chunk descriptor
     header.setUint8(0, 82); header.setUint8(1, 73); header.setUint8(2, 70); header.setUint8(3, 70);
     header.setUint32(4, fileSize, Endian.little);
-    // "WAVE" format
     header.setUint8(8, 87); header.setUint8(9, 65); header.setUint8(10, 86); header.setUint8(11, 69);
-    // "fmt " sub-chunk
     header.setUint8(12, 102); header.setUint8(13, 109); header.setUint8(14, 116); header.setUint8(15, 32);
-    header.setUint32(16, 16, Endian.little); // Subchunk1Size (16 for PCM)
-    header.setUint16(20, 1, Endian.little);  // AudioFormat (1 = PCM)
+    header.setUint32(16, 16, Endian.little);
+    header.setUint16(20, 1, Endian.little);
     header.setUint16(22, channels, Endian.little);
     header.setUint32(24, sampleRate, Endian.little);
     header.setUint32(28, byteRate, Endian.little);
     header.setUint16(32, blockAlign, Endian.little);
     header.setUint16(34, bitsPerSample, Endian.little);
-    // "data" sub-chunk
     header.setUint8(36, 100); header.setUint8(37, 97); header.setUint8(38, 116); header.setUint8(39, 97);
     header.setUint32(40, dataSize, Endian.little);
 

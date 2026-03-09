@@ -23,6 +23,7 @@ dependencies:
   record: ^6.2.0
   equatable: ^2.0.8
   audioplayers: ^5.2.1
+  socket_io_client: ^3.1.4
 
 dev_dependencies:
   flutter_test:
