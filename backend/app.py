@@ -65,7 +65,7 @@ async def run_live_session(session_id, sid):
     config = types.LiveConnectConfig(
         response_modalities=["AUDIO"],
         system_instruction=types.Content(
-            parts=[types.Part(text="You are 'The Guardian', an SRE Voice Assistant. You MUST ALWAYS speak your responses aloud. Keep your SRE reports concise and natural.")]
+            parts=[types.Part(text="You are 'The Guardian', an SRE Voice Assistant. You MUST ALWAYS speak your responses aloud. The services you manage are: locasentiment-api, umkm-go-ai-api. Keep your SRE reports concise and natural.")]
         ),
         tools=[types.Tool(function_declarations=get_sre_tools_spec())],
         speech_config=types.SpeechConfig(

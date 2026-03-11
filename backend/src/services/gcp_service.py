@@ -1,72 +1,75 @@
-import random
-from datetime import datetime, timezone
+import requests
+from google.cloud import logging as cloud_logging
+
+# THE SERVICE REGISTRY: Ganti URL di bawah dengan URL Cloud Run asli Anda
+SERVICE_REGISTRY = {
+    "locasentiment-api": "https://locasentiment-api-102863217534.asia-southeast2.run.app/",
+    "umkm-go-ai-api": "https://umkm-go-ai-api-102863217534.asia-southeast1.run.app/",
+}
 
 class GCPService:
-    """
-    Simulates Google Cloud Platform infrastructure interactions.
-    For a production environment, replace these mock returns with 
-    actual calls to google-cloud-monitoring or google-cloud-logging SDKs.
-    """
-
-    def __init__(self, project_id: str):
+    def __init__(self, project_id):
         self.project_id = project_id
+        try:
+            self.logging_client = cloud_logging.Client(project=project_id)
+            self.has_gcp_access = True
+            print(f"✅ REAL GCP Connected: Project {project_id}")
+        except Exception as e:
+            print(f"⚠️ GCP Auth Error: {e}")
+            self.has_gcp_access = False
 
-    def check_service_health(self, service_name: str, environment: str) -> dict:
-        """
-        Simulates checking the health of a specific GCP service.
-        """
-        print(f"[GCP Mock] Checking health for {service_name} in {environment}...")
+    def check_cloud_run_status(self, service_name: str) -> dict:
+        if not self.has_gcp_access:
+            return {"error": "GCP credentials not found."}
 
-        # Simulate a realistic scenario: 'payment-api' is currently struggling
-        if service_name.lower() == "payment-api":
-            status = "DEGRADED"
-            uptime = "98.5%"
-            active_alerts = 2
-        else:
-            status = "HEALTHY"
-            uptime = "99.99%"
-            active_alerts = 0
+        try:
+            # Memastikan nama layanan ditulis huruf kecil agar tidak miss-match
+            safe_service_name = service_name.lower()
+            filter_str = f'resource.type="cloud_run_revision" AND resource.labels.service_name="{safe_service_name}" AND severity>=WARNING'
 
-        return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "service": service_name,
-            "environment": environment,
-            "status": status,
-            "uptime_30d": uptime,
-            "active_alerts": active_alerts,
-            "message": f"Service is currently {status}."
-        }
+            entries = list(self.logging_client.list_entries(filter_=filter_str, max_results=3))
 
-    def get_infrastructure_metrics(self, service_name: str, metric_type: str, time_window_minutes: int = 15) -> dict:
-        """
-        Simulates retrieving specific performance metrics for a service.
-        """
-        print(f"[GCP Mock] Fetching {metric_type} for {service_name} over last {time_window_minutes} mins...")
+            if not entries:
+                return {
+                    "service": safe_service_name,
+                    "status": "HEALTHY / SCALED TO ZERO",
+                    "message": "Real Google Cloud logs checked. No errors found in the last hour. The service is dormant (scaled to zero)."
+                }
 
-        metric_value = "Unknown"
-        unit = ""
+            error_details = [entry.payload for entry in entries if entry.payload]
 
-        # Generate realistic mock data based on the requested metric
-        if metric_type == "latency":
-            # High latency if it's payment-api, normal otherwise
-            base_latency = 850 if service_name.lower() == "payment-api" else 45
-            variance = random.randint(-10, 50)
-            metric_value = f"{base_latency + variance}"
-            unit = "ms"
-        elif metric_type == "cpu_usage":
-            metric_value = f"{random.randint(40, 95)}"
-            unit = "%"
-        elif metric_type == "error_rate":
-            metric_value = "5.2" if service_name.lower() == "payment-api" else "0.01"
-            unit = "%"
-        elif metric_type == "memory_usage":
-            metric_value = f"{random.randint(60, 85)}"
-            unit = "%"
+            return {
+                "service": safe_service_name,
+                "status": "DEGRADED",
+                "active_errors": len(entries),
+                "latest_error_logs": error_details,
+                "message": "WARNING: Found recent error logs in Google Cloud."
+            }
+        except Exception as e:
+            return {"error": str(e)}
 
-        return {
-            "service": service_name,
-            "metric": metric_type,
-            "time_window": f"{time_window_minutes} minutes",
-            "average_value": f"{metric_value}{unit}",
-            "trend": "increasing" if int(float(metric_value)) > 80 else "stable"
-        }
+    # CRITICAL FIX: Parameter sekarang adalah 'service_name', bukan 'service_url'
+    def wake_up_service(self, service_name: str) -> dict:
+        """Tool SRE untuk membangunkan layanan hanya dengan menyebut namanya"""
+        safe_service_name = service_name.lower()
+        service_url = SERVICE_REGISTRY.get(safe_service_name)
+        
+        if not service_url:
+            available_services = ", ".join(SERVICE_REGISTRY.keys())
+            return {
+                "error": f"Layanan '{safe_service_name}' tidak terdaftar di buku alamat SRE. Layanan yang tersedia hanya: {available_services}"
+            }
+
+        try:
+            response = requests.get(service_url, timeout=15)
+            latency_ms = round(response.elapsed.total_seconds() * 1000, 2)
+            
+            return {
+                "action": "Wake Up Ping (Cold Start)",
+                "target_service": safe_service_name,
+                "http_status_code": response.status_code,
+                "cold_start_latency_ms": latency_ms,
+                "message": f"Service {safe_service_name} successfully awakened. Cold start latency: {latency_ms} ms."
+            }
+        except Exception as e:
+            return {"error": f"Failed to wake up {safe_service_name}: {str(e)}"}
