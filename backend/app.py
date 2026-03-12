@@ -17,7 +17,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 app = Flask(__name__)
 CORS(app)
 
-# SocketIO with very loose ping timeout to prevent disconnections (1011)
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
@@ -35,19 +34,15 @@ bridges = {}
 gcp_service = GCPService(PROJECT_ID)
 
 class SessionBridge:
-    """Queue Bridge between Flask (Sync) and Gemini (Async)"""
     def __init__(self, loop):
         self.loop = loop
         self.queue = asyncio.Queue(maxsize=1000)
-        self.dropped_frames = 0
 
     def put_nowait(self, item):
         if not self.loop.is_closed():
             try:
                 self.loop.call_soon_threadsafe(self.queue.put_nowait, item)
             except asyncio.QueueFull:
-                self.dropped_frames += 1
-                # If buffer is full, drop oldest data (FIFO drop) to make room
                 try:
                     self.queue.get_nowait()
                     self.loop.call_soon_threadsafe(self.queue.put_nowait, item)
@@ -55,8 +50,7 @@ class SessionBridge:
                     pass
 
 async def run_live_session(session_id, sid):
-    """Main event loop to communicate with Gemini"""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     bridge = SessionBridge(loop)
     bridges[session_id] = bridge
 
@@ -65,7 +59,7 @@ async def run_live_session(session_id, sid):
     config = types.LiveConnectConfig(
         response_modalities=["AUDIO"],
         system_instruction=types.Content(
-            parts=[types.Part(text="You are 'The Guardian', an SRE Voice Assistant. You MUST ALWAYS speak your responses aloud. The services you manage are: locasentiment-api, umkm-go-ai-api. Keep your SRE reports concise and natural.")]
+            parts=[types.Part(text="You are 'The Guardian', an SRE Voice Assistant. You MUST ALWAYS speak your responses aloud. The services you manage are: locasentiment-api, and umkm-go-ai-api. Keep your SRE reports concise and natural.")]
         ),
         tools=[types.Tool(function_declarations=get_sre_tools_spec())],
         speech_config=types.SpeechConfig(
@@ -81,15 +75,40 @@ async def run_live_session(session_id, sid):
             socketio.emit("system_status", {"message": "Guardian SRE is Online!"}, room=sid)
 
             async def sender_loop():
+                # TANDON AIR (BUFFER): Untuk mencegah pengiriman paket ganjil/cacat ke Gemini
+                audio_buffer = bytearray()
+                CHUNK_SIZE = 4096  # Ukuran pasti genap (4KB). Sempurna untuk 16-bit PCM.
+
                 while live_sessions.get(session_id, {}).get("active"):
                     try:
                         item = await asyncio.wait_for(bridge.queue.get(), timeout=0.5)
-                        if item["type"] == "audio":
-                            await session.send_realtime_input(
-                                audio=types.Blob(mime_type="audio/pcm;rate=16000", data=item["data"])
-                            )
+                        
+                        if item["type"] == "stop":
+                            # Kuras sisa air di tandon sebelum tutup
+                            if len(audio_buffer) % 2 != 0:
+                                audio_buffer = audio_buffer[:-1] # Buang 1 byte terakhir agar genap
+                            if len(audio_buffer) > 0:
+                                await session.send_realtime_input(
+                                    audio=types.Blob(mime_type="audio/pcm;rate=16000", data=bytes(audio_buffer))
+                                )
+                            break
+                            
+                        elif item["type"] == "audio":
+                            # Tampung air (byte) dari Flutter ke tandon
+                            audio_buffer.extend(item["data"])
+                            
+                            # Jika tandon sudah penuh (>= 4KB), cetak balok genap lalu kirim!
+                            while len(audio_buffer) >= CHUNK_SIZE:
+                                chunk_to_send = bytes(audio_buffer[:CHUNK_SIZE])
+                                del audio_buffer[:CHUNK_SIZE] # Hapus yang sudah dikirim
+                                
+                                await session.send_realtime_input(
+                                    audio=types.Blob(mime_type="audio/pcm;rate=16000", data=chunk_to_send)
+                                )
+                                
                         elif item["type"] == "tool_response":
                             await session.send_tool_response(function_responses=item["data"])
+                            
                     except asyncio.TimeoutError:
                         continue
                     except Exception as e:
@@ -99,9 +118,11 @@ async def run_live_session(session_id, sid):
                 while live_sessions.get(session_id, {}).get("active"):
                     try:
                         async for response in session.receive():
+                            if not live_sessions.get(session_id, {}).get("active"):
+                                break
+                                
                             current_sid = live_sessions[session_id]["sid"]
                             
-                            # 1. Forward Audio to Flutter via SocketIO
                             if response.server_content and response.server_content.model_turn:
                                 for part in response.server_content.model_turn.parts:
                                     if part.inline_data:
@@ -110,7 +131,6 @@ async def run_live_session(session_id, sid):
                                     if part.text:
                                         logging.info(f"🤖 Guardian: {part.text}")
 
-                            # 2. Handle Tool Calls
                             if response.tool_call:
                                 batch_responses = []
                                 for call in response.tool_call.function_calls:
@@ -124,24 +144,25 @@ async def run_live_session(session_id, sid):
                                             kwargs = kwargs.to_dict()
                                         
                                         raw_result = method(**kwargs)
-                                        result = {"status": "success", "data": str(raw_result),"instruction": "Speak the result naturally to the user."}
-                                        logging.info("✅ Tool execution success.")
+                                        result = {
+                                            "status": "success", 
+                                            "data": str(raw_result),
+                                            "instruction": "Speak the result naturally to the user."
+                                        }
                                     
                                     batch_responses.append(
                                         types.FunctionResponse(id=call.id, name=call.name, response=result)
                                     )
-
-                                    # Insert result into queue to be sent by sender_loop
-                                    # tool_resp = [types.FunctionResponse(id=call.id, name=call.name, response=result)]
+                                    
                                 if batch_responses:
                                     bridges[session_id].put_nowait({"type": "tool_response", "data": batch_responses})
-                                    logging.info(f"🚀 BATCH Tool Responses ({len(batch_responses)} tools) queued for sending!")
 
+                    except asyncio.CancelledError:
+                        break
                     except Exception as e:
                         logging.error(f"Receiver Loop Error: {e}")
                         break
 
-            # Run both loops in parallel
             await asyncio.gather(sender_loop(), receiver_loop())
 
     except Exception as e:
@@ -150,25 +171,21 @@ async def run_live_session(session_id, sid):
         if session_id in bridges: del bridges[session_id]
         if session_id in live_sessions: del live_sessions[session_id]
 
-
 def start_background_loop(session_id, sid):
-    """Run async event loop in a separate thread"""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    # 3. FIX: Gunakan asyncio.run agar pembersihan memori (aclose) diurus otomatis oleh Python
     try:
-        loop.run_until_complete(run_live_session(session_id, sid))
-    finally:
-        loop.close()
+        asyncio.run(run_live_session(session_id, sid))
+    except Exception as e:
+        logging.error(f"Background thread ended: {e}")
 
 
-# --- SOCKET.IO EVENT HANDLERS ---
 @socketio.on("connect")
 def handle_connect():
     logging.info(f"Client connected: {request.sid}")
 
 @socketio.on("start_session")
 def handle_start_session():
-    session_id = request.sid # Use SID as temporary Session ID
+    session_id = request.sid
     threading.Thread(target=start_background_loop, args=(session_id, request.sid), daemon=True).start()
 
 @socketio.on("send_audio")
@@ -176,23 +193,23 @@ def handle_audio(data):
     session_id = request.sid
     if session_id in bridges:
         try:
-            # Decode audio sent in Base64 format from Flutter
             audio_bytes = base64.b64decode(data.get("audio"))
             bridges[session_id].put_nowait({"type": "audio", "data": audio_bytes})
         except Exception as e:
-            logging.error(f"Audio processing error: {e}")
+            pass
 
 @socketio.on("disconnect")
 def handle_disconnect():
     session_id = request.sid
     if session_id in live_sessions:
         live_sessions[session_id]["active"] = False
+        # 4. FIX: Suntikkan sinyal mati agar sender_loop tidak menggantung (blocking)
+        if session_id in bridges:
+            bridges[session_id].put_nowait({"type": "stop"})
+            
     logging.info(f"Client disconnected: {request.sid}")
 
 
 if __name__ == "__main__":
-    print("=========================================")
-    print("🛡️ The Guardian SRE Backend (Socket.IO) 🛡️")
-    print("=========================================")
-    # Run server using SocketIO (not Uvicorn)
-    socketio.run(app, host="0.0.0.0", port=8080, debug=False)
+    port = int(os.environ.get("PORT", 8080))
+    socketio.run(app, host="0.0.0.0", port=port, debug=False, allow_unsafe_werkzeug=True)

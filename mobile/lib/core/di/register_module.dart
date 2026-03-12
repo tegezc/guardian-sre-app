@@ -7,5 +7,7 @@ abstract class RegisterModule {
   /// Provides the base URL for the WebSocket connection.
   /// IMPORTANT: Change this to your laptop's local IP when testing on a real device.
   @Named("baseUrl")
-  String get baseUrl => 'http://10.115.127.101:8080';
+  //String get baseUrl => 'http://10.115.127.101:8080';
+  String get baseUrl =>
+      'https://guardian-sre-backend-102863217534.asia-southeast2.run.app';
 }
