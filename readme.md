@@ -1,3 +1,4 @@
+```mermaid
 graph TD
     subgraph Client ["📱 Frontend (Mobile App)"]
         UI["UI Layer<br>(Guardian Orb Visualizer)"]
@@ -37,3 +38,4 @@ graph TD
     class Client mobile;
     class Middleware cloud;
     class GCP google;
+    ```
