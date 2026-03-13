@@ -170,6 +170,11 @@ Install packages:
 flutter pub get
 ```
 
+run dependency injection:
+```bash
+flutter pub run build_runner build --delete-conflicting-outputs
+```
+
 Open your dependency injection configuration register_module.dart and update the `baseUrl` to point to your backend.
 
 **Local**

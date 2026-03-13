@@ -24,6 +24,7 @@ dependencies:
   equatable: ^2.0.8
   audioplayers: ^5.2.1
   socket_io_client: ^3.1.4
+  flutter_launcher_icons: ^0.14.4
 
 dev_dependencies:
   flutter_test:
@@ -35,4 +36,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/app_icon.png"
 
