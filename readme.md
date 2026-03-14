@@ -144,8 +144,15 @@ python app.py
 
 ### (Bonus: Automated Deployment)
 
-Run the following command in the backend directory to deploy to GCP:
+** Bonus Point: Automated Cloud Deployment**
+We have fully automated the deployment process using a Bash script (`deploy.sh`). To deploy the backend infrastructure to Google Cloud Run automatically, simply execute the script in the `backend` directory:
 
+```bash
+chmod +x deploy.sh
+./deploy.sh
+```
+Manual Deployment (Alternative)
+If you prefer to deploy manually or are using a Windows environment without native Bash support, you can run the exact underlying Google Cloud CLI command directly from the backend directory:
 ```bash
 gcloud run deploy guardian-sre-backend \
   --source . \
@@ -155,8 +162,7 @@ gcloud run deploy guardian-sre-backend \
 ```
 
 **Note**
-
-Ensure the Cloud Run default service account has the **Logs Viewer IAM role**.
+Ensure the Cloud Run default service account has the Logs Viewer IAM role so the AI can read real-time GCP logs.
 
 ---
 
