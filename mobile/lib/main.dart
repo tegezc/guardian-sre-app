@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-// import file injection setup Anda (misal: get_it setup)
 import 'core/di/injection.dart';
 import 'presentation/pages/voice_dashboard_page.dart';
 

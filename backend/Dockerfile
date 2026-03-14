@@ -1,18 +1,18 @@
-# Gunakan image Python yang ringan
+# Use lightweight Python image
 FROM python:3.11-slim
 
-# Set working directory di dalam container
+# Set working directory inside container
 WORKDIR /app
 
-# Copy file requirements dan install
+# Copy requirements file and install
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy seluruh source code backend
+# Copy entire backend source code
 COPY . .
 
-# Beritahu Cloud Run port berapa yang digunakan
+# Tell Cloud Run which port is used
 ENV PORT=8080
 
-# Jalankan aplikasi
+# Run the application
 CMD ["python", "app.py"]

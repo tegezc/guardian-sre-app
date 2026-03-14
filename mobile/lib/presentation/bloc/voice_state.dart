@@ -16,10 +16,12 @@ class VoiceRecording extends VoiceState {}
 /// State representing server analysis (e.g., parsing SRE metrics).
 class VoiceProcessing extends VoiceState {
   final String statusMessage;
-  const VoiceProcessing(this.statusMessage);
+  final Map<String, dynamic>? metrics; // 🌟 NEW: Penampung data metrik JSON
+
+  const VoiceProcessing(this.statusMessage, {this.metrics});
 
   @override
-  List<Object?> get props => [statusMessage];
+  List<Object?> get props => [statusMessage, metrics];
 }
 
 /// State representing a failure in connection or permissions.

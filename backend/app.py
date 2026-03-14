@@ -34,7 +34,8 @@ MODEL_ID = "gemini-live-2.5-flash-native-audio"
 # Global State
 live_sessions = {}
 bridges = {}
-gcp_service = GCPService(PROJECT_ID)
+
+gcp_service = GCPService(project_id=PROJECT_ID, socketio=socketio)
 
 class SessionBridge:
     def __init__(self, loop):

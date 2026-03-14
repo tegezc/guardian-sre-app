@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class GuardianOrb extends StatefulWidget {
-  final String state; // Nilai yang diizinkan: 'idle', 'listening', 'speaking'
+  final String state; // Allowed values: 'idle', 'listening', 'speaking'
 
   const GuardianOrb({Key? key, required this.state}) : super(key: key);
 
@@ -16,13 +16,13 @@ class _GuardianOrbState extends State<GuardianOrb> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    // Setup penggerak animasi
+    // Setup animation driver
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
     )..repeat(reverse: true);
 
-    // Setup efek membesar-mengecil (skala 1.0 ke 1.3)
+    // Setup enlarge-shrink effect (scale 1.0 to 1.3)
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.3).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
@@ -31,15 +31,15 @@ class _GuardianOrbState extends State<GuardianOrb> with SingleTickerProviderStat
   @override
   void didUpdateWidget(GuardianOrb oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Mengubah kecepatan detak jantung berdasarkan status AI
+    // Changing heartbeat speed based on AI status
     if (widget.state == 'idle') {
       _controller.stop();
-      _controller.value = 0.0; // Reset ke ukuran normal
+      _controller.value = 0.0; // Reset to normal size
     } else if (widget.state == 'speaking') {
-      _controller.duration = const Duration(milliseconds: 400); // Detak cepat saat bicara
+      _controller.duration = const Duration(milliseconds: 400); // Fast beat when speaking
       _controller.repeat(reverse: true);
     } else {
-      _controller.duration = const Duration(seconds: 1); // Detak santai saat mendengarkan
+      _controller.duration = const Duration(seconds: 1); // Relaxed beat when listening
       _controller.repeat(reverse: true);
     }
   }
@@ -52,7 +52,7 @@ class _GuardianOrbState extends State<GuardianOrb> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
-    // Menentukan warna aura (Glow) berdasarkan status
+    // Determining aura (Glow) color based on status
     Color glowColor;
     if (widget.state == 'listening') {
       glowColor = Colors.cyanAccent;

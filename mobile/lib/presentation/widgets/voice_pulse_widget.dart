@@ -17,7 +17,7 @@ class _VoicePulseWidgetState extends State<VoicePulseWidget> with SingleTickerPr
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
-    )..repeat(); // Membuat animasi berjalan terus menerus
+    )..repeat(); // Make animation run continuously
   }
 
   @override
@@ -34,12 +34,12 @@ class _VoicePulseWidgetState extends State<VoicePulseWidget> with SingleTickerPr
         return Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(5, (index) {
-            // Logika sederhana untuk membuat variasi tinggi bar
+            // Simple logic to create bar height variation
             double value = math.sin((_controller.value * 2 * math.pi) + (index * 0.5));
             return Container(
               margin: const EdgeInsets.symmetric(horizontal: 4),
               width: 8,
-              height: 40 + (value * 30), // Bar akan naik turun antara 10-70
+              height: 40 + (value * 30), // Bar will go up and down between 10-70
               decoration: BoxDecoration(
                 color: Colors.blueAccent.withOpacity(0.8),
                 borderRadius: BorderRadius.circular(10),

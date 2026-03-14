@@ -1,5 +1,6 @@
 import requests
 from google.cloud import logging as cloud_logging
+import logging
 
 # THE SERVICE REGISTRY
 SERVICE_REGISTRY = {
@@ -8,14 +9,16 @@ SERVICE_REGISTRY = {
 }
 
 class GCPService:
-    def __init__(self, project_id):
+    # 🌟 CHANGE 1: Adding socketio parameter in initialization
+    def __init__(self, project_id, socketio=None):
         self.project_id = project_id
+        self.socketio = socketio  # Save socketio object in class memory
         try:
             self.logging_client = cloud_logging.Client(project=project_id)
             self.has_gcp_access = True
-            print(f"✅ REAL GCP Connected: Project {project_id}")
+            logging.info(f"✅ REAL GCP Connected: Project {project_id}")
         except Exception as e:
-            print(f"⚠️ GCP Auth Error: {e}")
+            logging.error(f"⚠️ GCP Auth Error: {e}")
             self.has_gcp_access = False
 
     def check_cloud_run_status(self, service_name: str) -> dict:
@@ -28,8 +31,27 @@ class GCPService:
             filter_str = f'resource.type="cloud_run_revision" AND resource.labels.service_name="{safe_service_name}" AND severity>=WARNING'
 
             entries = list(self.logging_client.list_entries(filter_=filter_str, max_results=3))
+            logging.info(f"🚀 [SRE HUD] PREPARING METRICS FOR SERVICE: {safe_service_name}")
 
             if not entries:
+                # ==========================================
+                # 📡 THE BULLETPROOF EMIT (DORMANT)
+                # ==========================================
+                if self.socketio:
+                    try:
+                        self.socketio.emit('ui_update', {
+                            "service": safe_service_name,
+                            "health": "DORMANT (SCALED TO ZERO)",
+                            "errors": "0 Errors (1h)",
+                            "action_latency": None
+                        })
+                        logging.info("✅ [SRE HUD] SUCCESSFULLY FIRED TO FLUTTER!")
+                    except Exception as emit_err:
+                        logging.error(f"❌ [SRE HUD] ERROR SOCKET: {emit_err}")
+                else:
+                    logging.warning("⚠️ [SRE HUD] SocketIO object not found!")
+                # ==========================================
+                
                 return {
                     "service": safe_service_name,
                     "status": "HEALTHY / SCALED TO ZERO",
@@ -38,6 +60,24 @@ class GCPService:
 
             error_details = [entry.payload for entry in entries if entry.payload]
 
+            # ==========================================
+            # 📡 THE BULLETPROOF EMIT (CRITICAL)
+            # ==========================================
+            if self.socketio:
+                try:
+                    self.socketio.emit('ui_update', {
+                        "service": safe_service_name,
+                        "health": "CRITICAL",
+                        "errors": f"{len(entries)} Errors (1h)",
+                        "action_latency": None
+                    })
+                    logging.info("✅ [SRE HUD] SUCCESSFULLY FIRED TO FLUTTER!")
+                except Exception as emit_err:
+                    logging.error(f"❌ [SRE HUD] ERROR SOCKET: {emit_err}")
+            else:
+                logging.warning("⚠️ [SRE HUD] SocketIO object not found!")
+            # ==========================================
+            
             return {
                 "service": safe_service_name,
                 "status": "DEGRADED",
@@ -48,7 +88,6 @@ class GCPService:
         except Exception as e:
             return {"error": str(e)}
 
-    # CRITICAL FIX: Parameter is now 'service_name', not 'service_url'
     def wake_up_service(self, service_name: str) -> dict:
         """SRE tool to wake up the service just by mentioning its name"""
         safe_service_name = service_name.lower()
@@ -63,6 +102,24 @@ class GCPService:
         try:
             response = requests.get(service_url, timeout=15)
             latency_ms = round(response.elapsed.total_seconds() * 1000, 2)
+            
+            # ==========================================
+            # 📡 THE BULLETPROOF EMIT (ACTION RESULT)
+            # ==========================================
+            if self.socketio:
+                try:
+                    self.socketio.emit('ui_update', {
+                        "service": safe_service_name,
+                        "health": "AWAKE & HEALTHY",
+                        "errors": "0 Errors (1h)",
+                        "action_latency": f"{latency_ms} ms"
+                    })
+                    logging.info("✅ [SRE HUD] SUCCESSFULLY FIRED TO FLUTTER!")
+                except Exception as emit_err:
+                    logging.error(f"❌ [SRE HUD] ERROR SOCKET: {emit_err}")
+            else:
+                logging.warning("⚠️ [SRE HUD] SocketIO object not found!")
+            # ==========================================
             
             return {
                 "action": "Wake Up Ping (Cold Start)",

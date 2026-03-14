@@ -20,7 +20,6 @@ class SreRemoteDataSourceImpl implements SreRemoteDataSource {
   final StreamController<dynamic> _streamController = StreamController<dynamic>.broadcast();
 
   /// Injecting the baseUrl using the named dependency from RegisterModule.
-  /// KRITIKAL: Pastikan baseUrl Anda di DI sekarang menggunakan "http://" bukan "ws://"
   SreRemoteDataSourceImpl(@Named("baseUrl") this.serverUrl);
 
   @override
@@ -29,32 +28,44 @@ class SreRemoteDataSourceImpl implements SreRemoteDataSource {
   @override
   void connect() {
     try {
-      // 1. Inisialisasi Socket.IO dengan konfigurasi anti-putus
+      // 1. Initialize Socket.IO with anti-disconnect configuration
       _socket = IO.io(serverUrl, IO.OptionBuilder()
-          .setTransports(['websocket']) // Paksa menggunakan jalur websocket agar real-time
+          .setTransports(['websocket']) // Force using websocket path for real-time
           .disableAutoConnect()
           .build());
 
-      // 2. Tangani Event Koneksi
+      // 2. Handle Connection Events
       _socket!.onConnect((_) {
-        print('✅ SreRemoteDataSource: Terhubung ke Socket.IO Server');
-        // Wajib memicu backend untuk memulai sesi Gemini Live
+        print(' SreRemoteDataSource: Connected to Socket.IO Server');
+        // Must trigger backend to start Gemini Live session
         _socket!.emit('start_session');
       });
 
-      // 3. Tangani Event Teks/Status (Opsional, jika backend mengirimkan log)
+      // 3. Handle Text/Status Events (Optional, if backend sends logs)
       _socket!.on('system_status', (data) {
         if (!_streamController.isClosed) {
-          // Meneruskan pesan status sebagai string ke BLoC
+          // Forward status message as string to BLoC
           _streamController.add(data['message']);
         }
       });
 
-      // 4. Tangani Event Audio dari Gemini
+      // ==========================================================
+      // 🌟 3.5 Handle SRE HUD Metrics Event
+      // ==========================================================
+      _socket!.on('ui_update', (data) {
+        if (!_streamController.isClosed) {
+          print(' Receiving SRE Metrics Data from Backend: $data');
+          // Send this raw JSON Map into the BLoC pipe
+          _streamController.add(data);
+        }
+      });
+      // ==========================================================
+
+      // 4. Handle Audio Event from Gemini
       _socket!.on('audio_response', (data) {
         if (data != null && data['audio'] != null) {
-          // Clean Architecture: Sembunyikan kerumitan Base64 dari BLoC.
-          // Kita decode di sini agar BLoC tetap menerima Uint8List seperti sebelumnya.
+          // Clean Architecture: Hide Base64 complexity from BLoC.
+          // We decode here so BLoC still receives Uint8List as before.
           final String base64Audio = data['audio'];
           final Uint8List audioBytes = base64Decode(base64Audio);
 
@@ -64,22 +75,22 @@ class SreRemoteDataSourceImpl implements SreRemoteDataSource {
         }
       });
 
-      // 5. Tangani Pemutusan & Error
+      // 5. Handle Disconnection & Error
       _socket!.onDisconnect((_) {
-        print('❌ SreRemoteDataSource: Terputus dari server');
+        print(' SreRemoteDataSource: Disconnected from server');
         if (!_streamController.isClosed) {
           _streamController.addError("Connection closed by server.");
         }
       });
 
       _socket!.onError((error) {
-        print('⚠️ SreRemoteDataSource Error: $error');
+        print(' SreRemoteDataSource Error: $error');
         if (!_streamController.isClosed) {
           _streamController.addError(error.toString());
         }
       });
 
-      // 6. Buka Koneksi secara manual
+      // 6. Open Connection manually
       _socket!.connect();
 
     } catch (e) {
@@ -91,10 +102,10 @@ class SreRemoteDataSourceImpl implements SreRemoteDataSource {
 
   @override
   void sendAudio(Uint8List audioChunk) {
-    // Pastikan socket aktif sebelum memompa data suara dari mikrofon
+    // Ensure socket is active before pumping audio data from microphone
     if (_socket != null && _socket!.connected) {
-      // Socket.IO tidak bisa mengirim byte mentah dengan efisien di Flutter,
-      // kita wajib mengubahnya menjadi Base64 sebelum dikirim ke Python.
+      // Socket.IO cannot send raw bytes efficiently in Flutter,
+      // we must convert it to Base64 before sending to Python.
       final String base64String = base64Encode(audioChunk);
       _socket!.emit('send_audio', {'audio': base64String});
     }
