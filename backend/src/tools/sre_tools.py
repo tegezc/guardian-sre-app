@@ -22,7 +22,6 @@ def get_sre_tools_spec():
             parameters={
                 "type": "object",
                 "properties": {
-                    # MENGUBAH URL MENJADI NAMA LAYANAN
                     "service_name": {
                         "type": "string",
                         "description": "The short name of the service to wake up (e.g., locasentiment-api, umkm-go-ai-api). DO NOT USE URLs."

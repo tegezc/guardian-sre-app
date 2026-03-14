@@ -17,6 +17,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 app = Flask(__name__)
 CORS(app)
 
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.CRITICAL)  ## Only show critical/fatal level errors
+
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
@@ -75,18 +78,18 @@ async def run_live_session(session_id, sid):
             socketio.emit("system_status", {"message": "Guardian SRE is Online!"}, room=sid)
 
             async def sender_loop():
-                # TANDON AIR (BUFFER): Untuk mencegah pengiriman paket ganjil/cacat ke Gemini
+                # WATER TANK (BUFFER): To prevent sending odd/corrupted packets to Gemini
                 audio_buffer = bytearray()
-                CHUNK_SIZE = 4096  # Ukuran pasti genap (4KB). Sempurna untuk 16-bit PCM.
+                CHUNK_SIZE = 4096  # Definitely even size (4KB). Perfect for 16-bit PCM.
 
                 while live_sessions.get(session_id, {}).get("active"):
                     try:
                         item = await asyncio.wait_for(bridge.queue.get(), timeout=0.5)
                         
                         if item["type"] == "stop":
-                            # Kuras sisa air di tandon sebelum tutup
+                            # Drain remaining water in the tank before closing
                             if len(audio_buffer) % 2 != 0:
-                                audio_buffer = audio_buffer[:-1] # Buang 1 byte terakhir agar genap
+                                audio_buffer = audio_buffer[:-1] # Discard the last 1 byte to make it even
                             if len(audio_buffer) > 0:
                                 await session.send_realtime_input(
                                     audio=types.Blob(mime_type="audio/pcm;rate=16000", data=bytes(audio_buffer))
@@ -94,13 +97,13 @@ async def run_live_session(session_id, sid):
                             break
                             
                         elif item["type"] == "audio":
-                            # Tampung air (byte) dari Flutter ke tandon
+                            # Store water (bytes) from Flutter to the tank
                             audio_buffer.extend(item["data"])
                             
-                            # Jika tandon sudah penuh (>= 4KB), cetak balok genap lalu kirim!
+                            # If the tank is full (>= 4KB), print even blocks then send!
                             while len(audio_buffer) >= CHUNK_SIZE:
                                 chunk_to_send = bytes(audio_buffer[:CHUNK_SIZE])
-                                del audio_buffer[:CHUNK_SIZE] # Hapus yang sudah dikirim
+                                del audio_buffer[:CHUNK_SIZE] # Delete what has been sent
                                 
                                 await session.send_realtime_input(
                                     audio=types.Blob(mime_type="audio/pcm;rate=16000", data=chunk_to_send)
@@ -172,7 +175,7 @@ async def run_live_session(session_id, sid):
         if session_id in live_sessions: del live_sessions[session_id]
 
 def start_background_loop(session_id, sid):
-    # 3. FIX: Gunakan asyncio.run agar pembersihan memori (aclose) diurus otomatis oleh Python
+    # 3. FIX: Use asyncio.run so that memory cleanup (aclose) is handled automatically by Python
     try:
         asyncio.run(run_live_session(session_id, sid))
     except Exception as e:
@@ -203,7 +206,7 @@ def handle_disconnect():
     session_id = request.sid
     if session_id in live_sessions:
         live_sessions[session_id]["active"] = False
-        # 4. FIX: Suntikkan sinyal mati agar sender_loop tidak menggantung (blocking)
+        # 4. FIX: Inject death signal so sender_loop doesn't hang (blocking)
         if session_id in bridges:
             bridges[session_id].put_nowait({"type": "stop"})
             

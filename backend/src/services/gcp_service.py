@@ -1,7 +1,7 @@
 import requests
 from google.cloud import logging as cloud_logging
 
-# THE SERVICE REGISTRY: Ganti URL di bawah dengan URL Cloud Run asli Anda
+# THE SERVICE REGISTRY
 SERVICE_REGISTRY = {
     "locasentiment-api": "https://locasentiment-api-102863217534.asia-southeast2.run.app/",
     "umkm-go-ai-api": "https://umkm-go-ai-api-102863217534.asia-southeast1.run.app/",
@@ -23,7 +23,7 @@ class GCPService:
             return {"error": "GCP credentials not found."}
 
         try:
-            # Memastikan nama layanan ditulis huruf kecil agar tidak miss-match
+            # Ensuring the service name is written in lowercase to avoid mismatch
             safe_service_name = service_name.lower()
             filter_str = f'resource.type="cloud_run_revision" AND resource.labels.service_name="{safe_service_name}" AND severity>=WARNING'
 
@@ -48,16 +48,16 @@ class GCPService:
         except Exception as e:
             return {"error": str(e)}
 
-    # CRITICAL FIX: Parameter sekarang adalah 'service_name', bukan 'service_url'
+    # CRITICAL FIX: Parameter is now 'service_name', not 'service_url'
     def wake_up_service(self, service_name: str) -> dict:
-        """Tool SRE untuk membangunkan layanan hanya dengan menyebut namanya"""
+        """SRE tool to wake up the service just by mentioning its name"""
         safe_service_name = service_name.lower()
         service_url = SERVICE_REGISTRY.get(safe_service_name)
         
         if not service_url:
             available_services = ", ".join(SERVICE_REGISTRY.keys())
             return {
-                "error": f"Layanan '{safe_service_name}' tidak terdaftar di buku alamat SRE. Layanan yang tersedia hanya: {available_services}"
+                "error": f"Service '{safe_service_name}' is not registered in the SRE address book. Available services only: {available_services}"
             }
 
         try:
