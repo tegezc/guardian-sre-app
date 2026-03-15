@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'dart:typed_data';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
@@ -130,6 +131,13 @@ class VoiceBloc extends Bloc<VoiceEvent, VoiceState> {
       );
 
       final micStream = await _audioRecorder.startStream(config);
+
+      const platform = MethodChannel('com.guardian.sre/audio');
+      try {
+        await platform.invokeMethod('forceSpeaker');
+      } catch (e) {
+        print("Gagal memaksa speaker native: $e");
+      }
 
       _micSubscription = micStream.listen((data) {
         add(_AudioChunkCaptured(data));

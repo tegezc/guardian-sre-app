@@ -110,8 +110,8 @@ class GCPService:
                 try:
                     self.socketio.emit('ui_update', {
                         "service": safe_service_name,
-                        "health": "AWAKE & HEALTHY",
-                        "errors": "0 Errors (1h)",
+                        "health": "HTTP PING SUCCESS",
+                        "errors": "N/A",
                         "action_latency": f"{latency_ms} ms"
                     })
                     logging.info("✅ [SRE HUD] SUCCESSFULLY FIRED TO FLUTTER!")

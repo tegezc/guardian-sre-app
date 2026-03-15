@@ -120,7 +120,7 @@ class VoiceDashboardView extends StatelessWidget {
               const SizedBox(height: 12),
               Text('TARGET : $service', style: const TextStyle(color: Colors.white70, fontFamily: 'monospace', fontSize: 14)),
               Text('STATUS : $health', style: TextStyle(color: healthColor, fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 14)),
-              Text('ERRORS : $errors', style: const TextStyle(color: Colors.white70, fontFamily: 'monospace', fontSize: 14)),
+              if (errors != 'N/A') Text('ERRORS : $errors', style: const TextStyle(color: Colors.white70, fontFamily: 'monospace', fontSize: 14)),
 
               // Display Latency ONLY if Cold Start action is executed
               if (latency != null) ...[
