@@ -1,4 +1,4 @@
-# 🛡️ The Guardian SRE: Next-Gen Voice-Activated SRE Agent
+#  The Guardian SRE: Next-Gen Voice-Activated SRE Agent
 
 [![Category](https://img.shields.io/badge/Category-Live_Agents_🗣️-blue.svg)](#)
 [![Google Cloud](https://img.shields.io/badge/Hosted_on-Google_Cloud_Run-4285F4.svg)](#)
@@ -6,10 +6,10 @@
 
 ---
 
-# 📖 Project Description
+#  Project Description
 
-**The Guardian SRE** redefines how Site Reliability Engineers (SREs) interact with production infrastructure.  
-Moving beyond static dashboards and text-based chatbots, The Guardian is an immersive, full-duplex voice agent powered by the **Gemini Live API**.
+**The Guardian SRE** redefines how Site Reliability Engineers (SREs) interact with production infrastructure. 
+Moving beyond static dashboards and text-based chatbots, The Guardian is an immersive, full-duplex voice agent powered by the **Gemini Native Audio API**.
 
 It acts as your hands-free, real-time cloud copilot. SREs can ask for system health reports, and the agent will dynamically query **Google Cloud Logging** for real-time error rates.
 
@@ -19,20 +19,28 @@ No typing. No dashboards. Just natural, interruptible, real-time voice operation
 
 ---
 
-# 🎥 Demonstration Video
+# Key Features
+* ** Full-Duplex Voice Interruption:** Powered by native VoIP mode and Hardware AEC, allowing you to naturally interrupt the AI mid-sentence to issue new commands or stop an action.
+* ** Real-Time Log Grounding:** The AI directly queries the Google Cloud Logging API to fetch live production error rates and system status for your target services.
+* ** Infrastructure Action Calling:** The agent doesn't just read logs; it can execute real HTTP "Cold Start Pings" to wake up dormant serverless APIs upon your voice command.
+* ** Multimodal SRE HUD (Out-of-Band Signaling):** While the AI speaks, the app listens to a parallel Socket.IO stream to instantly display real-time Google Cloud metrics (Health, Errors, Cold Start Latency) in a hacker-style Terminal HUD without adding latency to the voice response.
+* ** Cloud-Native Streaming Architecture:** A robust Flask + Socket.IO middleware deployed on Google Cloud Run that handles 16-bit PCM chunk buffering and asynchronous gRPC connections to Gemini.
+
+---
+# Demonstration Video
 
 [Link to your 4-minute Pitch & Demo Video on YouTube/Vimeo]
 
 ---
 
-# 🏗️ Architecture Diagram
+# Architecture Diagram
 
 We designed a robust, event-driven streaming architecture to handle real-time PCM audio chunks while preventing OS-level acoustic feedback.
 
 ```mermaid
 graph TD
     subgraph Client ["📱 Frontend (Mobile App)"]
-        UI["UI Layer<br>(Guardian Orb Visualizer)"]
+        UI["UI Layer<br>(Guardian Orb Visualizer & Terminal HUD)"]
         BLoC["State Management<br>(VoiceBloc / Clean Arch)"]
         Audio["Audio Hardware<br>(Full-Duplex VoIP + AEC)"]
         
@@ -69,6 +77,8 @@ graph TD
     class Client mobile;
     class Middleware cloud;
     class GCP google;
+
+    linkStyle 0,1,2,3,4,5,6,7,8 stroke:#FFFF00,stroke-width:2px;
 ```
 
 
@@ -84,11 +94,9 @@ graph TD
 - Flask-SocketIO
 
 ## Frontend
-- Flutter
-- Dart
-- BLoC Pattern
-- audioplayers
-- record
+- Flutter / Dart
+- BLoC Pattern (Clean Architecture)
+- audioplayers & record package
 
 ## Google Cloud Services
 - Google Cloud Run – Hosts the async Socket.IO middleware backend
