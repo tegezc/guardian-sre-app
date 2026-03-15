@@ -1,4 +1,4 @@
-#  The Guardian SRE: Next-Gen Voice-Activated SRE Agent
+#  The Guardian SRE: Voice-Native Cloud Ops
 
 [![Category](https://img.shields.io/badge/Category-Live_Agents_🗣️-blue.svg)](#)
 [![Google Cloud](https://img.shields.io/badge/Hosted_on-Google_Cloud_Run-4285F4.svg)](#)
@@ -29,7 +29,7 @@ No typing. No dashboards. Just natural, interruptible, real-time voice operation
 ---
 # Demonstration Video
 
-[Link to your 4-minute Pitch & Demo Video on YouTube/Vimeo]
+https://www.youtube.com/watch?v=8nAIDMIEJ6E
 
 ---
 
